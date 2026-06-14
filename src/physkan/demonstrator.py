@@ -10,9 +10,11 @@ class TradKAN(KAN):
         super().__init__(*args, **(dict(base_activation=nn.SiLU, transition_overlap=1.0) | kwargs))
         self.trust_scale = torch.inf
 
-    def forward(self, x, return_damage=False):
-        x = super().forward(x, return_damage=False)
-        return (x, []) if return_damage else x
+    def forward(self, x, return_components=False):
+        x = super().forward(x, return_components=return_components)
+        if return_components:
+            x["damages"] = []
+        return x
 
 class KANDemonstrator:
     """A utility class for training and visualizing PhysKAN models,
@@ -38,7 +40,8 @@ class KANDemonstrator:
         for epoch in range(epochs):
             optimizer.zero_grad()
             # Expecting the network to return (primal_prediction, dual_severity)
-            y_pred, damages = self.model(features, return_damage=True)
+            components = self.model(features, return_components=True)
+            y_pred, damages = components["final"], components["damages"]
             if self.mixer:
                 y_pred = self.mixer(y_pred)
             loss = criterion(y_pred, y_train)
@@ -56,7 +59,8 @@ class KANDemonstrator:
         self.model.eval()
         features = self.feature_fn(x_raw)
         with torch.no_grad():
-            y_pred, damages = self.model(features, return_damage=True)
+            components = self.model(features, return_components=True)
+            y_pred, damages = components["final"], components["damages"]
             if self.mixer:
                 y_pred = self.mixer(y_pred)
             return (y_pred, damages)

@@ -2,7 +2,7 @@ import copy
 import inspect
 import math
 from functools import cached_property
-from typing import Callable
+from typing import Callable, Literal
 
 import torch
 import torch.nn as nn
@@ -154,7 +154,7 @@ class KANLinear(torch.nn.Module):
             penalty += lambda_l2 * slope.pow(2).mean()
         return penalty
 
-    def forward(self, x: torch.Tensor, return_damage: bool = False):
+    def forward(self, x: torch.Tensor, return_components: bool = False):
         """Internal forward pass computing both primal (physics) and dual (severity)."""
         assert x.size(-1) == self.in_features
         original_shape = x.shape
@@ -168,7 +168,7 @@ class KANLinear(torch.nn.Module):
 
         # 1. Calculate OOB-ness and resulting trust (if required)
         trust = local_damage = None
-        if return_damage or (torch.is_grad_enabled() and self.spline_weight.requires_grad):
+        if return_components or (torch.is_grad_enabled() and self.spline_weight.requires_grad):
             lower_bound, upper_bound = self.grid_bounds.T
             local_damage = (F.relu(x - upper_bound) + F.relu(lower_bound - x)) / (upper_bound - lower_bound)
             if local_damage.amax() > 1e-6:
@@ -206,9 +206,13 @@ class KANLinear(torch.nn.Module):
 
         # 3. Combine and return tuple
         x_final = (base_output + spline_output).reshape(*original_shape[:-1], self.out_features)
-        if not return_damage:
+        if return_components:
+            return {
+                "final": x_final,
+                "local_damage": local_damage,
+            }
+        else:
             return x_final
-        return x_final, local_damage
 
 
 class KAN(torch.nn.Module):
@@ -336,18 +340,94 @@ class KAN(torch.nn.Module):
             layer.reset_parameters()
 
     def forward(
-        self, x: torch.Tensor, return_damage: bool = False
+        self, x: torch.Tensor, return_components: bool = False
     ):
-        x = self.interactor(x)
+        x = interacted = self.interactor(x)
         damages = []
 
         if self.symbolic_order > 0:
             poly_out = self.poly_skip(x)
 
         for layer in self.layers:
-            x, local_damage = layer.forward(x, return_damage=True)
-            damages.append(local_damage)
+            layer_comp = layer.forward(x, return_components=True)
+            x = layer_comp["final"]
+            damages.append(layer_comp["local_damage"])
         if self.symbolic_order > 0:
             x = x + poly_out
 
-        return (x, damages) if return_damage else x
+        if return_components:
+            return {
+                "interacted": interacted,
+                "kan_out": x,
+                "final": x,
+                "damages": damages,
+            }
+        else:
+            return x
+
+
+class KanHybrid:
+    def __init__(
+        out_features: int,
+        layer_dims: list[int],
+        grid_size: int = 5,
+        spline_order: int = 3,
+        grid_range: tuple[float, float] | list[tuple[float, float]] | torch.Tensor = (-1.0, 1.0),
+        spline_dropout: float = 0.0,
+        interaction_map: list[list[int] | Callable[[torch.Tensor], torch.Tensor]] = [],
+        symbolic_order: int = 0,
+        transition_overlap: float = 0.0,
+        mlp_mode: Literal["none", "multiplicative", "additive"] = None,
+        mlp_strength: float = 0.15,
+        mlp_hidden_dims: list[int] = [],
+        mlp_dropout: float = 0.0,
+    ):
+        self.kan = KAN(
+            layer_dims=layer_dims,
+            grid_size=grid_size,
+            spline_order=spline_order,
+            grid_range=grid_range,
+            spline_dropout=spline_dropout,
+            interaction_map=interaction_map,
+            symbolic_order=symbolic_order,
+            transition_overlap=transition_overlap,
+        )
+
+        self.mixer = nn.Linear(layer_dims[-1], out_features)
+
+        self.mlp_mode = mlp_mpde
+        self.mlp_strength = mlp_strength
+        if mlp_mode != "none":
+            mlp_layer_dims = [self.layers[0].in_features + out_features] + mlp_hidden_dims + [out_features]
+            mlp_layers = []
+            for i, (in_features, out_features) in enumerate(zip(mlp_layer_dims, mlp_layer_dims[1:])):
+                mlp_layers.append(Linear(in_features, out_features))
+                mlp_layers.append(nn.SiLU())
+            self.mlp = nn.Sequential(mlp_layers[:-1])  # drop final activation
+
+    def forward(
+        self, x: torch.Tensor, return_components: bool = False
+    ):
+        kan_comp = self.kan(x, return_components=True)
+        x = kan_comp["final"]
+        x = self.mixer(x)
+
+        if self.mlp_mode != "none":
+            mlp_in = torch.cat([kan_comp["interacted"], kan_comp["kan_out"]], dim=1)
+            mlp_out = self.mlp_strength * torch.tanh(self.mlp(mlp_in))
+            if self.mlp_mode == "additive":
+                x = x + mlp_out
+            elif self.mlp_mode == "multiplicative":
+                x = x * (1.0 + mlp_out)
+            else:
+                raise ValueError(f"Unknown mlp mode '{self.mlp_mode}'")
+        else:
+            mlp_out = None
+
+        if return_components:
+            return kan_comp | {
+                "mlp_out": mlp_out,
+                "final": x,
+            }
+        else:
+            return x
