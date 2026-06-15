@@ -60,12 +60,11 @@ class KANDemonstrator:
         features = self.feature_fn(x_raw)
         with torch.no_grad():
             components = self.model(features, return_components=True)
-            y_pred, damages = components["final"], components["damages"]
             if self.mixer:
-                y_pred = self.mixer(y_pred)
-            return (y_pred, damages)
+                components["final"] = self.mixer(components["final"])
+            return components
 
-    def plot(self, x_raw_eval, title="PhysKAN Demonstration", feature_idx: int = 0, plot_damage: bool | None = None, nominal_range: tuple[float, float] = (-1.0, 1.0)):
+    def plot(self, x_raw_eval, title="PhysKAN Demonstration", feature_idx: int = 0, plot_damage: bool | None = None, nominal_range: tuple[float, float] = (-1.0, 1.0), return_components=False):
         """Plots the physical prediction (primal) and severity tracking (dual).
         feature_idx dictates which raw feature column to plot on the x-axis.
         """
@@ -74,7 +73,8 @@ class KANDemonstrator:
         x_raw_eval = x_raw_eval[sort_idx]
 
         y_true = self.target_fn(x_raw_eval)
-        y_pred, damages_pred = self.predict(x_raw_eval)
+        components = self.predict(x_raw_eval)
+        y_pred, damages_pred = components["final"], components["damages"]
         if plot_damage is None:
             plot_damage = any((d != 0.0).any() for d in damages_pred)
 
@@ -124,3 +124,5 @@ class KANDemonstrator:
 
         plt.tight_layout()
         plt.show()
+        if return_components:
+            return components

@@ -12,4 +12,5 @@ Key Features:
 """
 
 from .kan import KAN as KAN
+from .kan import KANHybrid as KANHybrid
 from .kan import KANLinear as KANLinear

@@ -366,8 +366,9 @@ class KAN(torch.nn.Module):
             return x
 
 
-class KanHybrid:
+class KANHybrid(nn.Module):
     def __init__(
+        self,
         out_features: int,
         layer_dims: list[int],
         grid_size: int = 5,
@@ -377,11 +378,13 @@ class KanHybrid:
         interaction_map: list[list[int] | Callable[[torch.Tensor], torch.Tensor]] = [],
         symbolic_order: int = 0,
         transition_overlap: float = 0.0,
-        mlp_mode: Literal["none", "multiplicative", "additive"] = None,
+        mlp_mode: Literal["none", "multiplicative", "additive"] = "none",
         mlp_strength: float = 0.15,
         mlp_hidden_dims: list[int] = [],
         mlp_dropout: float = 0.0,
     ):
+        super().__init__()
+
         self.kan = KAN(
             layer_dims=layer_dims,
             grid_size=grid_size,
@@ -393,17 +396,24 @@ class KanHybrid:
             transition_overlap=transition_overlap,
         )
 
-        self.mixer = nn.Linear(layer_dims[-1], out_features)
+        self.mixer = nn.Linear(layer_dims[-1], out_features, bias=False)
 
-        self.mlp_mode = mlp_mpde
+        self.mlp_mode = mlp_mode
         self.mlp_strength = mlp_strength
+        self.mlp_dropout = mlp_dropout
         if mlp_mode != "none":
-            mlp_layer_dims = [self.layers[0].in_features + out_features] + mlp_hidden_dims + [out_features]
+            mlp_layer_dims = [self.kan.layers[0].in_features + self.kan.layers[-1].out_features] + mlp_hidden_dims + [out_features]
             mlp_layers = []
-            for i, (in_features, out_features) in enumerate(zip(mlp_layer_dims, mlp_layer_dims[1:])):
-                mlp_layers.append(Linear(in_features, out_features))
+            for i, (in_dim, out_dim) in enumerate(zip(mlp_layer_dims, mlp_layer_dims[1:])):
+                mlp_layers.append(nn.Linear(in_dim, out_dim))
                 mlp_layers.append(nn.SiLU())
-            self.mlp = nn.Sequential(mlp_layers[:-1])  # drop final activation
+            self.mlp = nn.Sequential(*mlp_layers[:-1])  # drop final activation
+
+    def get_deep_loss(self, lambda_l1=1e-4, lambda_l2=1e-5):
+        return self.kan.get_deep_loss(lambda_l1, lambda_l2)
+
+    def get_stiffness_loss(self, n=1, lambda_l1=1e-4, lambda_l2=1e-5):
+        return self.kan.get_stiffness_loss(n, lambda_l1, lambda_l2)
 
     def forward(
         self, x: torch.Tensor, return_components: bool = False
@@ -414,7 +424,9 @@ class KanHybrid:
 
         if self.mlp_mode != "none":
             mlp_in = torch.cat([kan_comp["interacted"], kan_comp["kan_out"]], dim=1)
-            mlp_out = self.mlp_strength * torch.tanh(self.mlp(mlp_in))
+            mlp_out = self.mlp_strength * torch.tanh(self.mlp(mlp_in.detach()))
+            if self.mlp_dropout > 0.0:
+                mlp_out = F.dropout(mlp_out, p=self.mlp_dropout, training=self.training)
             if self.mlp_mode == "additive":
                 x = x + mlp_out
             elif self.mlp_mode == "multiplicative":

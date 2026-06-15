@@ -12,7 +12,7 @@
 import torch
 import torch.nn as nn
 
-from physkan import KAN
+from physkan import KAN, KANHybrid
 from physkan.demonstrator import KANDemonstrator, TradKAN
 
 torch.manual_seed(42)
@@ -112,7 +112,7 @@ demo_1b.plot(generate_x_data(-4.0, 4.0, 200), "1b. The Wide Grid Fallacy (Untrai
 # %% [markdown]
 # ## Part 2: The PhysKAN mechanical clamp
 #
-# Now we introduce the core PhysKAN mechanics. Instead of unpredictable SiLU asymptotes or 
+# Now we introduce the core PhysKAN mechanics. Instead of SiLU asymptotes or 
 # collapsing wide grids, PhysKAN uses a strict `Identity` linear baseline and a mechanical clamp that stops OOB gradients from reaching the spline.
 #
 # **What to look for in the plots:**
@@ -120,7 +120,7 @@ demo_1b.plot(generate_x_data(-4.0, 4.0, 200), "1b. The Wide Grid Fallacy (Untrai
 # But the moment the data leaves the bounds, the mechanical clamp freezes the splines, preventing 
 # oscillation. 
 #
-# **...this doesn't look any better does it?** You will notice the extrapolation is a straight line and the in-bounds splines form a 
+# **...but this doesn't look any better does it?** You will notice the extrapolation is a straight line and the in-bounds splines form a 
 # parabola — even though it is trained on the sparse (wide) dataset. The splines are protected from the OOB data and free to fit the parabola locally, while the base track 
 # absorbs the residual slope. Where the splines shut off, that slope is exposed. We happily trade 
 # the wild flatlining of standard networks for a safe, predictable, linear fallback.
@@ -133,12 +133,25 @@ demo_2 = KANDemonstrator(model=model_2, target_fn=lambda x: x**2)
 demo_2.train(sparse_data)
 demo_2.plot(dense_data, "2. PhysKAN: Spline Plateau and Linear Asymptote")
 
+# %% [markdown]
+# # 3a. Linear recovery via feature engineering
+#
+# By providing $x^2$ as an engineered feature, the network has the basis it needs to create the perfect asymptote. However, the physical prediction is still not good, as you can see below.
+#
+# During training, instead of relying purely on the interaction feature, the network put weight some on the raw $x$ feature and used the splines to cancel out the error.
+# When extrapolated, the splines clamped, the cancellation stopped, and the raw error emerged.
+#
+# **Challenge:** Do you think it would make a difference to train on e.g. `sparse_data`? Why?
+
 # %%
-model_3a = KAN(layer_dims=[1, 1], interaction_map=[[0, 0]], grid_size=5, spline_order=3)
-demo_3a = KANDemonstrator(model=model_3a, target_fn=lambda x: x**2, feature_fn=lambda x: x)
+model_3a = KAN(layer_dims=[2, 1], grid_size=5, spline_order=3)
+demo_3a = KANDemonstrator(model=model_3a, target_fn=lambda x: x**2, feature_fn=lambda x: torch.cat([x, x**2], dim=1))
 
 demo_3a.train(nominal_data)
 demo_3a.plot(dense_data, "3a. Basis competition (spline vs asymptote)")
+
+# %% [markdown]
+# *Note — it is preferred to provide an explicit `interaction_map` to PhysKAN rather than input-side feature engineering. More on that later.*
 
 # %% [markdown]
 # ### The solution: Forcing physical isolation via dropout
@@ -158,12 +171,12 @@ demo_3a.plot(dense_data, "3a. Basis competition (spline vs asymptote)")
 
 # %%
 model_3b = KAN(
-    layer_dims=[1, 1], interaction_map=[[0, 0]], grid_size=5, spline_order=3, spline_dropout=0.05
+    layer_dims=[2, 1], grid_size=5, spline_order=3, spline_dropout=0.05
 )
-demo_3b = KANDemonstrator(model=model_3b, target_fn=lambda x: x**2, feature_fn=lambda x: x)
+demo_3b = KANDemonstrator(model=model_3b, target_fn=lambda x: x**2, feature_fn=lambda x: torch.cat([x, x**2], dim=1))
 
 demo_3b.train(nominal_data)
-demo_3b.plot(dense_data, "3b. Safe Extrapolation (Spline Dropout Active)")
+demo_3b.plot(dense_data, "3b. Nominal-range extrapolation (with spline dropout)")
 
 
 # %% [markdown]
@@ -241,7 +254,3 @@ demo_4a.plot(eval_x_theta, "4a. Deep Discovery")
 # Proceed to `demo_deep.py` to see the symbolic track (`symbolic_order=N`) solve this perfectly.
 # Or, if you're more interested in how to make the model transition successfully from the nominal (spline)
 # region to the asymptotic (linear) region in shallow networks, go straight to `demo_splines.py`!
-
-# %%
-
-# %%
