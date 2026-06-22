@@ -54,7 +54,7 @@ class KANInteraction(torch.nn.Module):
                 # ---------------------------------------------------------
                 fn, idx = interaction
                 num_features = len(idx)
-                base_bounds = grid_bounds[idx]
+                base_bounds = grid_bounds[idx].view(-1, 2)
                 needed_bits = (num_features ** 2 * expected_complexity).bit_length() + 2
                 num_samples = 1 << max(10, needed_bits)
                 # 1. Generate Sobol samples and move to correct device/dtype

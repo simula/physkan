@@ -28,12 +28,12 @@ class KANDemonstrator:
         self.feature_fn = feature_fn if feature_fn else lambda x: x
         self.mixer = mixer
 
-    def train(self, x_raw_train, epochs=500, lr=0.05, weight_decay=1e-4, hidden_loss=0.0, stiffness_loss=0.0, sobolev_loss=0.0, l1_l2=0.5):
+    def train(self, x_raw_train, epochs=500, lr=0.05, weight_decay=1e-4, hidden_loss=0.0, stiffness_loss=0.0, sobolev_loss=0.0, l1_l2=0.5, extra_params=[]):
         """Trains the model using the provided raw input tensors."""
         y_train = self.target_fn(x_raw_train)
         features = self.feature_fn(x_raw_train)
 
-        optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=weight_decay)
+        optimizer = torch.optim.AdamW(list(self.model.parameters()) + extra_params, lr=lr, weight_decay=weight_decay)
         criterion = nn.MSELoss()
 
         self.model.train()
