@@ -50,6 +50,7 @@ class KAN(torch.nn.Module):
         interaction_map: list[list[int] | Callable[[torch.Tensor], torch.Tensor]] = [],
         symbolic_order: int = 0,
         transition_overlap: float = 0.0,
+        input_bias: bool = False,
     ):
         super().__init__()
         self.interactor = KANInteraction(interaction_map)
@@ -82,6 +83,7 @@ class KAN(torch.nn.Module):
                     nonlinear_dropout=nonlinear_dropout,
                     pure_spline_mode=pure_spline_mode,
                     transition_overlap=transition_overlap,
+                    bias=input_bias if i == 0 else True,
                     _quiet_init=symbolic_order > 0,
                     _is_hidden_layer=bool(i > 0),
                 ) if i == 0 or num_harmonics is None else KANHarmonic(
@@ -89,6 +91,7 @@ class KAN(torch.nn.Module):
                     out_features,
                     num_harmonics=num_harmonics,
                     nonlinear_dropout=nonlinear_dropout,
+                    bias=True,
                     _quiet_init=symbolic_order > 0,
                 )
             )

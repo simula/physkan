@@ -107,7 +107,7 @@ model_1b = TradKAN(
 demo_1b = KANDemonstrator(model=model_1b, target_fn=lambda x: x**2)
 
 demo_1b.train(sparse_data)
-demo_1b.plot(generate_x_data(-4.0, 4.0, 200), "1b. The Wide Grid Fallacy (Untrained Knot Collapse)", nominal_range=(-4.0, 4.0))
+demo_1b.plot(dense_data, "1b. The Wide Grid Fallacy (Untrained Knot Collapse)", nominal_range=(-4.0, 4.0))
 
 # %% [markdown]
 # ## Part 2: The PhysKAN mechanical clamp
@@ -171,7 +171,7 @@ demo_3a.plot(dense_data, "3a. Basis competition (spline vs asymptote)")
 
 # %%
 model_3b = KAN(
-    layer_dims=[2, 1], grid_size=5, spline_order=3, spline_dropout=0.05
+    layer_dims=[2, 1], grid_size=5, spline_order=3, nonlinear_dropout=0.05
 )
 demo_3b = KANDemonstrator(model=model_3b, target_fn=lambda x: x**2, feature_fn=lambda x: torch.cat([x, x**2], dim=1))
 
@@ -198,16 +198,19 @@ demo_3b.plot(dense_data, "3b. Nominal-range extrapolation (with spline dropout)"
 
 # %%
 torch.manual_seed(42)
-model_4a = KAN(layer_dims=[2, 4, 1], grid_size=10, spline_order=3, spline_dropout=0.1)
+model_4a = KAN(layer_dims=[2, 2, 1], grid_size=5, spline_order=3, num_harmonics=1, nonlinear_dropout=0.1)
 demo_4a = KANDemonstrator(
     model=model_4a,
-    target_fn=lambda x: (x[:, 0:1] ** 2) * torch.cos(x[:, 1:2]),
+    target_fn=lambda x: x[:, 0:1].pow(2) * torch.cos(x[:, 1:2]),
     feature_fn=lambda x: torch.cat([x[:, 0:1], torch.cos(x[:, 1:2])], dim=1),
     #mixer=nn.Linear(1, 1),
 )
 
-demo_4a.train(nominal_x_theta, epochs=500)
+demo_4a.train(nominal_x_theta, epochs=1000)
 demo_4a.plot(eval_x_theta, "4a. Deep Discovery")
+
+# %%
+model_4a
 
 # %% [markdown]
 # ### The deep-network amplitude trap
@@ -254,3 +257,18 @@ demo_4a.plot(eval_x_theta, "4a. Deep Discovery")
 # Proceed to `demo_deep.py` to see the symbolic track (`symbolic_order=N`) solve this perfectly.
 # Or, if you're more interested in how to make the model transition successfully from the nominal (spline)
 # region to the asymptotic (linear) region in shallow networks, go straight to `demo_splines.py`!
+
+# %%
+p_exp = nn.Parameter(torch.tensor(0.0))
+exp = lambda: 1.0 + torch.tanh(p_exp)
+model_5 = KAN(
+    layer_dims=[1, 1], grid_size=5, spline_order=3, nonlinear_dropout=0.1,
+    interaction_map=[(lambda x: x.abs().pow(exp()), (0,))],
+    num_harmonics=100,
+)
+demo_5 = KANDemonstrator(model=model_5, target_fn=lambda x: x.abs().pow(0.5) + 0.2 * torch.cos(4.0*x))
+
+demo_5.train(sparse_data, extra_params=[p_exp])
+demo_5.plot(dense_data, f"5. Trainable interaction, exp={exp():.2f}")
+
+# %%

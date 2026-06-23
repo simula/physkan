@@ -30,8 +30,8 @@ class KANHarmonic(torch.nn.Module):
         self.bias = nn.Parameter(torch.empty(out_features)) if bias else None
         self.reset_parameters(_quiet_init)
 
-        self.register_buffer("running_min", torch.full((num_features,), float('inf')))
-        self.register_buffer("running_max", torch.full((num_features,), float('-inf')))
+        self.register_buffer("running_min", torch.full((in_features,), float('inf')))
+        self.register_buffer("running_max", torch.full((in_features,), float('-inf')))
 
     def reset_parameters(self, quiet=False):
         nn.init.xavier_uniform_(self.harmonic_weight)

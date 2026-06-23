@@ -53,7 +53,7 @@ eval_x_theta = generate_x_theta_eval(-4.0, 4.0)
 
 # %%
 torch.manual_seed(42)
-model_4b = KAN(layer_dims=[2, 4, 1], grid_size=5, spline_order=3, spline_dropout=0.1)
+model_4b = KAN(layer_dims=[2, 4, 1], grid_size=5, spline_order=3, nonlinear_dropout=0.1)
 demo_4b = KANDemonstrator(
     model=model_4b,
     target_fn=lambda x: (x[:, 0:1] ** 2) * torch.cos(x[:, 1:2]),
@@ -64,7 +64,7 @@ demo_4b.train(nominal_x_theta, epochs=1000, hidden_loss=0.0)
 demo_4b.plot(eval_x_theta, "4b. Deep discovery")
 
 # %% [markdown]
-# # 4c. Deep network feature discovery, a hybrid approach
+# # 4c. Deep network feature discovery, a hybrid polynomial approach
 #
 # To fix the unpredictable extrapolation of the deep network, we introduce the symbolic skip track, bypassing the splines.
 # By setting `symbolic_order=3`, the model automatically builds a polynomial expansion of the inputs.
@@ -72,12 +72,12 @@ demo_4b.plot(eval_x_theta, "4b. Deep discovery")
 # The splines only activate to map local residuals.
 # Because the symbolic track provides a predictable structural prior, extrapolation remains stable even when the dual severity ($D$) indicates we have left the training data.
 #
-# Note that it *might* be beneficial to integrate this via phased training rather than relying only on `spline_dropout`, in effect letting the symbolic track resolve as much as possible of the error before allowing the spline layers to learn anything. Regardless of method, deep discovery of asymptotic behaviour without tail-data anchoring is a high-risk approach that should be treated as **experimental**. The lower-risk strategy is to form the interaction explicitly as `interaction_map=[[0, 0, 1]]` from domain expertise, and create a linear skip connection `symbolic_order=1` with moderate `spline_dropout` in the (0.2, 0.5) range.
+# Note that it *might* be beneficial to integrate this via phased training rather than relying only on `nonlinear_dropout`, in effect letting the symbolic track resolve as much as possible of the error before allowing the spline layers to learn anything. Regardless of method, deep discovery of asymptotic behaviour without tail-data anchoring is a high-risk approach that should be treated as **experimental**. The lower-risk strategy is to form the interaction explicitly as `interaction_map=[[0, 0, 1]]` from domain expertise, and create a linear skip connection `symbolic_order=1` with moderate `nonlinear_dropout` in the (0.2, 0.5) range.
 
 # %%
 torch.manual_seed(42)
 model_4c = KAN(
-    layer_dims=[2, 4, 1], grid_size=5, spline_order=3, symbolic_order=3, spline_dropout=0.3
+    layer_dims=[2, 4, 1], grid_size=5, spline_order=3, symbolic_order=3, nonlinear_dropout=0.3
 )
 demo_4c = KANDemonstrator(
     model=model_4c,
@@ -117,7 +117,7 @@ def feature_multi(x):
 
 
 model_5a = KAN(
-    layer_dims=[2, 4, 2], interaction_map=[[0, 0]], grid_size=5, spline_order=3, symbolic_order=1, spline_dropout=0.8
+    layer_dims=[2, 4, 2], interaction_map=[[0, 0]], grid_size=5, spline_order=3, symbolic_order=1, nonlinear_dropout=0.8
 )
 
 demo_5a = KANDemonstrator(model=model_5a, target_fn=target_multi, feature_fn=feature_multi)
@@ -161,7 +161,7 @@ model_5b = KAN(
     grid_size=5,
     spline_order=3,
     symbolic_order=1,
-    spline_dropout=0.8,
+    nonlinear_dropout=0.8,
 )
 
 demo_5b = KANDemonstrator(model=model_5b, target_fn=target_multi, feature_fn=feature_multi)
@@ -181,7 +181,7 @@ demo_5b.plot(eval_x_theta, "5b. Multi-target separation")
 # %%
 torch.manual_seed(42)
 model_5a = KAN(
-    layer_dims=[2, 4, 1], grid_size=5, spline_order=3, symbolic_order=3, spline_dropout=0.0
+    layer_dims=[2, 4, 1], grid_size=5, spline_order=3, symbolic_order=3, nonlinear_dropout=0.0
 )
 demo_5a = KANDemonstrator(
     model=model_5a,
