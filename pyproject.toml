@@ -12,7 +12,7 @@ include = [
 
 [project]
 name = "physkan"
-version = "0.1.2"
+version = "0.1.3"
 description = "A physics-constrained Kolmogorov-Arnold Network with bounded latent spaces."
 readme = "README.md"
 requires-python = ">=3.12"
